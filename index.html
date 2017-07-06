@@ -1,0 +1,442 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Dodger Game</title>
+        <script src="js/phaser.min.js"></script>
+        <style type="text/css">
+            canvas{
+                width:100%;
+                height:100%;
+            }
+        </style>
+    </head>
+    <body>
+
+<script type="text/javascript">
+        
+var game;
+var player;
+var zombies;
+var coins;
+var score = 0;
+var elapsedSecondsPlaying = 0;
+var background;
+var cursors;
+var gameState = 'TITLE_MENU'; //PLAYING, GAMEOVER, PAUSED
+var playerState = 'ALIVE';
+var startGameText;
+var pauseGameText;
+var gameoverGameText;
+var scoreText = '';
+var playerBaseSpeed = 200;
+
+var pauseKey;
+var pauseKeyDown = false;
+
+var coin_sound;
+var zombie_sound;
+var touched_sound;
+var game_music;
+
+window.onload = function() {
+
+    //init game object and and disable antialiasing with last params
+    //new Game(width, height, renderer, parent, state, transparent, antialias, physicsConfig)
+    game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update, render:render }, true, false);
+    
+    function preload () {
+        //images
+        game.load.image('backgroundRoad', 'img/background-1.png');
+        
+        game.load.spritesheet('characters', 'img/7DRL-Characters-old.png', 16, 16);
+        game.load.spritesheet('coin_copper', 'img/coin_copper.png', 32, 32);
+        game.load.spritesheet('coin_gold', 'img/coin_gold.png', 32, 32);
+        game.load.spritesheet('coin_silver', 'img/coin_silver.png', 32, 32);
+        
+        //audio
+        game.load.audio('coin_sound', 'sounds/coin_1.wav');
+        game.load.audio('zombie_sound', 'sounds/zombie-16.wav');
+        game.load.audio('touched_sound', 'sounds/deathh.wav');
+        game.load.audio('game_music', 'sounds/wyver9_Fast Level.wav');
+        
+    }
+
+    function create () {
+        
+        //set physics
+        game.physics.startSystem(Phaser.Physics.ARCADE);
+        
+        //init background and resize to fit
+        background = game.add.sprite(0, 0, 'backgroundRoad');
+        background.scale.setTo( game.world.width/background.width , game.world.height/background.height);
+        
+        //create enemies group
+        zombies = game.add.group();
+        game.physics.arcade.enable(zombies);
+        zombies.enableBody = true;
+        
+        
+        //create coins group
+        coins = game.add.group();
+        game.physics.arcade.enable(coins);
+        coins.enableBody = true;
+        
+        
+        //create player
+        player = game.add.sprite(game.world.width/2, game.world.height/2, 'characters');
+        //scale player
+        player.scale.setTo(4,4);
+        //set physics to player
+        game.physics.arcade.enable(player);
+        //set player animations
+        player.animations.add('move', [0, 1, 2, 3], 4, true);
+        player.enableBody = true;
+        player.body.setSize(12, 12, 2, 2);
+        
+        //add start game instructions
+        startGameText = game.add.text(game.world.centerX, game.world.centerY, 'Click / Touch to start', { font: "bold 32px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" });
+        startGameText.anchor.set(0.5);
+        startGameText.setShadow(3, 3, 'rgba(0,0,0,0.5)', 2);
+        
+        //add score text
+        scoreText = game.add.text(16, 16, 'Score: '+score, { font: "bold 32px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" });
+        //scoreText.anchor.set(0.5);
+        scoreText.setShadow(3, 3, 'rgba(0,0,0,0.5)', 2);
+        
+        //bind click to start game
+        game.input.onDown.add(startGame, this);
+        
+        //Set sounds
+        coin_sound = game.add.audio('coin_sound');
+        coin_sound.volume = 0.5;
+        zombie_sound = game.add.audio('zombie_sound');
+        zombie_sound.volume = 0.5;
+        touched_sound = game.add.audio('touched_sound');
+        touched_sound.volume = 0.5;
+        game_music = game.add.audio('game_music');
+        game_music.volume = 0.3;
+        game_music.loop = true;
+    }
+    
+    
+    function update () {
+        
+        //Game Logic
+        gameCodeBlock();
+        
+        //Player Logic
+        playerCodeBlock();
+        zombiesCodeBlock();
+        coinsCodeBlock();
+        
+        //reset pause game button
+        pauseKeyDown = false;
+    }
+    
+    
+    function startGame(){
+        console.log("Start Game");
+        game.input.onDown.remove(startGame, this);
+        gameState = "PLAYING";
+        startGameText.destroy();
+        
+        //bind pause button
+        pauseKey = game.input.keyboard.addKey(Phaser.Keyboard.P);
+        pauseKey.onDown.add(updatePauseKeyDown, this);
+        
+        //bind restart button
+        pauseKey = game.input.keyboard.addKey(Phaser.Keyboard.R);
+        pauseKey.onDown.add(updateRestartKeyDown, this);
+        
+        //animate player
+        player.animations.play('move');
+        
+        game.time.events.loop(Phaser.Timer.SECOND, updateScore, this);
+        game.time.events.loop(Phaser.Timer.SECOND*2, playZombieSound, this);
+        game.time.events.loop(Phaser.Timer.SECOND/2, createZombies, this);
+        game.time.events.loop(Phaser.Timer.SECOND/2, createCoins, this);
+        game_music.play();
+    }
+    
+    
+    function updatePauseKeyDown (){
+        pauseGame();
+    }
+    
+    function updateRestartKeyDown(){
+        
+        if(gameState == "GAMEOVER"){
+            score = 0;
+            elapsedSecondsPlaying = 0;
+            game.state.start(game.state.current);
+        }
+        
+    }
+    
+    function pauseGame(){
+        if(gameState == "PLAYING"){
+            gameState = "PAUSE";
+            pauseGameText = game.add.text(game.world.centerX, game.world.centerY, 'Game Paused, Press P to Continue', { font: "bold 32px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" });
+            pauseGameText.anchor.set(0.5);
+            pauseGameText.setShadow(3, 3, 'rgba(0,0,0,0.5)', 2);
+            player.animations.stop();
+            zombies.animations.stop();
+            coins.animations.stop();
+        }
+        else
+            if(gameState == "PAUSE"){
+            gameState = "PLAYING";
+            pauseGameText.destroy();
+            player.animations.play('move');
+            zombies.animations.play('move');
+            coins.animations.play('move');
+        }
+    }
+    
+    
+    function updateScore(){
+        if(gameState == "PLAYING"){
+            score += 10;
+            elapsedSecondsPlaying += 1;
+        }
+    }
+    
+    
+    function gameOverGame(){
+        
+        player.enableBody = false;
+        game_music.stop();
+        gameState = "GAMEOVER";
+        gameoverGameText = game.add.text(game.world.centerX, game.world.centerY, "Game Over \n Your Score: " + score + "\n Pres R to Restart", {align: "center", font: "bold 32px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" });
+        gameoverGameText.anchor.set(0.5);
+        gameoverGameText.setShadow(3, 3, 'rgba(0,0,0,0.5)', 2);
+        //player.animations.stop();
+    
+    }
+    
+    
+    function createZombies(){
+        
+        var minX;
+        var maxX;
+        var spawnX;
+        var maxSpeed;
+        var nZombies;
+        
+        nZombies = (elapsedSecondsPlaying/20)+1;
+        
+        if(nZombies > 3){
+            nZombies = 3;
+        }
+        
+        if(gameState == "PLAYING"){
+            for(x=0; x< nZombies; x++){
+                minX = 8;
+                maxX = game.world.width - minX;
+                
+                spawnX = Math.floor(Math.random() * maxX) + minX;
+                maxSpeed = 300;
+                
+                
+                var zombie = zombies.create( spawnX, -20, 'characters');
+                zombie.scale.setTo(4,4);
+                zombie.animations.add('move', [33,34,35, 36], 2, true);
+                zombie.animations.play('move');
+                zombie.body.velocity.y = Math.floor(Math.random() * maxSpeed)+100;
+                zombie.body.setSize(9, 12, 4, 3);
+                //zombie.body.setCircle(8);
+            }
+        }
+    }
+    
+    
+    function createCoins(){
+        
+        var minX;
+        var maxX;
+        var spawnX;
+        var maxSpeed;
+        var nCoins;
+        
+        nCoins = (elapsedSecondsPlaying/20)+1;
+        
+        if(nCoins > 3){
+            nCoins = 3;
+        }
+        
+        if(gameState == "PLAYING"){
+            for(x=0; x< nCoins; x++){
+                minX = 8;
+                maxX = game.world.width - minX;
+                
+                spawnX = Math.floor(Math.random() * maxX) + minX;
+                maxSpeed = 300;
+                
+                
+                var coin = coins.create( spawnX, -20, 'coin_gold');
+                coin.scale.setTo(2,2);
+                coin.animations.add('move', [0, 1, 2, 3, 4, 5, 6, 7], 2, true);
+                coin.animations.play('move');
+                coin.body.velocity.y = Math.floor(Math.random() * maxSpeed)+100;
+                //coin.body.setSize(14, 14, 6, 4);
+                coin.body.setCircle(9, 8,5);
+            }
+        }
+    }
+    
+    
+    function playerCodeBlock(){
+        
+        //player touch enemy
+        if(gameState == "PLAYING")
+            game.physics.arcade.overlap(player, zombies,
+            function (player, zombie){
+                //player.destroy();
+                touched_sound.play();
+                gameOverGame();
+            }
+            , null, this);
+        
+        //player touch coin
+        if(gameState == "PLAYING")
+            game.physics.arcade.overlap(player, coins,
+            function (player, coin){
+                coin_sound.play();
+                coin.destroy();
+                score += 15;
+                
+            }
+            , null, this);
+        
+        
+        //player movement
+        if(gameState == "PLAYING"){
+            player.x = game.input.x-player.width/2;
+            player.y = game.input.y-player.height/2;
+        }
+
+    }
+    
+    function zombiesCodeBlock(){
+        
+        //For each zombie
+        zombies.forEach(function(zombie){
+            
+            //Move
+            if(gameState == "PLAYING"){
+                //zombie.y += zombie.speed;
+            }
+                
+            //Destroy
+            if(gameState == "PLAYING")
+                if(zombie.y > game.world.height){
+                    zombie.destroy();
+                }
+            
+        });
+        
+    }
+    
+    function coinsCodeBlock(){
+        
+        //For each zombie
+        coins.forEach(function(coin){
+            
+            //Move
+            if(gameState == "PLAYING"){
+                //coin.y += coin.speed;
+            }
+                
+            //Destroy
+            if(gameState == "PLAYING")
+                if(coin.y > game.world.height){
+                    coin.destroy();
+                }
+            
+        });
+        
+    }
+    
+    function playZombieSound(){
+        if(gameState == "PLAYING")
+            zombie_sound.play();
+    }
+    
+    
+    function gameCodeBlock(){
+        
+        scoreText.setText('Score: ' + score);
+    }
+    
+    function render() {
+
+        // Sprite debug info
+        //game.debug.spriteInfo(player, 32, 100);
+        //game.debug.text( "N Zombies: "+zombies.length+" Seconds: "+elapsedSecondsPlaying, 100, 380 );
+        
+        
+        /*coins.forEach(function(coin){
+            game.debug.body(coin);
+        });
+        
+        zombies.forEach(function(zombie){
+             game.debug.body(zombie);
+        })
+        
+        game.debug.body(player);*/
+        
+    }
+    
+
+    /*function playerController(){
+        
+        player.body.velocity.x = 0;
+        player.body.velocity.y = 0;
+        
+        if (cursors.left.isDown)
+        {
+            //  Move to the left
+            player.body.velocity.x = -playerBaseSpeed;
+            player.animations.play('move');
+        }
+        
+        if (cursors.right.isDown)
+        {
+            //  Move to the right
+            player.body.velocity.x = playerBaseSpeed;
+            player.animations.play('move');
+        }
+        
+        if (cursors.up.isDown)
+        {
+            //  Move to the right
+            player.body.velocity.y = -playerBaseSpeed;
+            player.animations.play('move');
+        }
+        
+        if (cursors.down.isDown)
+        {
+            //  Move to the right
+            player.body.velocity.y = playerBaseSpeed;
+            player.animations.play('move');
+        }
+        
+        
+        if(player.body.velocity.x == 0 && player.body.velocity.y == 0)
+        {
+            //  Stand still
+            player.animations.play('move');
+        }
+        
+        if(pauseKeyDown){
+            console.log("pauseKeyDown: ", pauseKeyDown);
+            game.state.restart();
+        }
+        
+    }*/
+};
+</script>
+
+    </body>
+</html>
