@@ -1,6 +1,8 @@
 # Dodger-Game-Demo
 Dodger Game Demo created using PhaserJs
 
+Play the demo here: (https://eddornelas.github.io/Dodger-Game-Demo/)
+
 ## Credits
 
 ### -- PhaserJs Engine (The Game engine)
