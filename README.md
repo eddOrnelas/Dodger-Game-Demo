@@ -3,6 +3,10 @@ Dodger Game Demo created using PhaserJs
 
 ## Credits
 
+### -- PhaserJs Engine (The Game engine)
+PhaserJs
+(https://phaser.io/)
+
 ### -- Characters Sprite Sheet
 Keith Karnage
 (https://opengameart.org/users/keith-karnage)
